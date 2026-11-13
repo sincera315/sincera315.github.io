@@ -396,20 +396,61 @@
   .cert-tab.active { background: var(--grad); color: #fff; border-color: transparent; }
   .cert-panel { display: none; }
   .cert-panel.active { display: block; animation: fadeUp 0.5s ease both; }
-  .cert-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; }
+  .cert-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.25rem; }
+
   .cert-card {
+    position: relative; display: block;
+    aspect-ratio: 4 / 3;
+    border-radius: 14px; overflow: hidden;
     background: var(--card); border: 1px solid var(--border);
-    border-radius: 14px; padding: 1.5rem;
-    display: flex; flex-direction: column; gap: 0.4rem;
-    transition: border-color 0.2s, transform 0.2s;
+    text-decoration: none; color: inherit;
+    transition: border-color 0.25s, transform 0.25s, box-shadow 0.25s;
   }
-  .cert-card:hover { border-color: rgba(168,85,247,0.4); transform: translateY(-3px); }
-  .cert-issuer { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--pink-l); }
+  .cert-card:hover, .cert-card:focus-visible, .cert-card.open {
+    border-color: rgba(168,85,247,0.5);
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(124,58,237,0.22);
+    outline: none;
+  }
+  .cert-thumb {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: #050505;
+  }
+  .cert-thumb::before {
+    content: 'Loading preview…';
+    position: absolute;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem; color: var(--muted);
+  }
+  .cert-thumb.ready::before { display: none; }
+  .cert-thumb.failed::before { content: 'Preview unavailable'; }
+  .cert-thumb canvas {
+    width: 100%; height: 100%; object-fit: contain;
+    opacity: 0; transition: opacity 0.5s ease, transform 0.5s ease;
+  }
+  .cert-thumb.ready canvas { opacity: 1; }
+  .cert-card:hover .cert-thumb canvas,
+  .cert-card.open .cert-thumb canvas { transform: scale(1.05); }
+
+  .cert-overlay {
+    position: absolute; inset: 0;
+    padding: 1.25rem;
+    display: flex; flex-direction: column; justify-content: flex-end; gap: 0.3rem;
+    background: linear-gradient(to top, rgba(0,0,0,0.96) 35%, rgba(0,0,0,0.7));
+    opacity: 0; transform: translateY(14px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    overflow-y: auto;
+  }
+  .cert-card:hover .cert-overlay,
+  .cert-card:focus-visible .cert-overlay,
+  .cert-card.open .cert-overlay { opacity: 1; transform: none; }
+  .cert-issuer { font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--pink-l); }
   .cert-title { font-size: 1.02rem; font-weight: 600; line-height: 1.3; }
-  .cert-note { font-size: 0.82rem; color: var(--azure-l); }
-  .cert-date { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--muted); }
-  .cert-link { margin-top: 0.75rem; font-size: 0.82rem; color: var(--purple-l); text-decoration: none; font-weight: 500; }
-  .cert-link:hover { color: var(--azure); }
+  .cert-note { font-size: 0.8rem; color: var(--azure-l); font-weight: 500; }
+  .cert-desc { font-size: 0.78rem; color: #c4bedb; line-height: 1.55; margin-top: 0.15rem; }
+  .cert-link { margin-top: 0.5rem; font-size: 0.8rem; color: var(--purple-l); font-weight: 500; }
+  .cert-card:hover .cert-link { color: var(--azure-l); }
   .cert-more { margin-top: 2rem; font-size: 0.85rem; color: var(--muted); }
   .cert-more a { color: var(--purple-l); text-decoration: none; }
 
@@ -757,11 +798,13 @@
   <h2 class="section-title reveal">Proof of <span class="grad-text">Learning</span></h2>
 
   <div class="cert-tabs reveal">
-    <button class="cert-tab active" data-tab="skills">Skills & Extracurricular</button>
+    <button class="cert-tab active" data-tab="skills">Tech Skills</button>
+    <button class="cert-tab" data-tab="softskills">Soft Skills</button>
     <button class="cert-tab" data-tab="hackathons">Hackathons</button>
   </div>
 
   <div class="cert-panel active" id="panel-skills"><div class="cert-grid" id="grid-skills"></div></div>
+  <div class="cert-panel" id="panel-softskills"><div class="cert-grid" id="grid-softskills"></div></div>
   <div class="cert-panel" id="panel-hackathons"><div class="cert-grid" id="grid-hackathons"></div></div>
 
   <p class="cert-more">All certificates are archived in
@@ -837,6 +880,7 @@ const obs = new IntersectionObserver((entries) => {
 revealEls.forEach(el => obs.observe(el));
 </script>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
 // ── Certifications: reads the PDFs straight from your GitHub repo folders
 const OWNER  = 'sincera315';
@@ -845,29 +889,63 @@ const BRANCH = 'main';
 
 // panel key -> exact folder name in your repo
 const FOLDERS = {
-  skills: 'Skills and Extracurricular',
+  skills: 'Tech Skills',
+  softskills: 'Soft Skills',
   hackathons: 'Hackathons'
 };
 
 // Used only if GitHub's API is unavailable (e.g. rate limit)
 const FALLBACK = {
-  skills: ['Game Development.pdf', 'Intro_to_Git.pdf', 'Deenfest best performer.pdf',
-           'deenfest participation.pdf', 'nascon_certificate.pdf'],
+  skills: ['Game Development.pdf', 'Intro_to_Git.pdf'],
+  softskills: ['Deenfest best performer.pdf', 'deenfest participation.pdf', 'nascon_certificate.pdf'],
   hackathons: ['Participation_Google_Hackathon.pdf']
 };
 
-// Optional: nicer titles/issuers. Key = exact filename. Anything not listed
-// gets an automatic title made from its filename.
+// Hover details. Key = exact filename in the repo.
 const DETAILS = {
-  'Game Development.pdf':               { title: 'Game Development',            issuer: '' },
-  'Intro_to_Git.pdf':                   { title: 'Introduction to Git',         issuer: '' },
-  'Deenfest best performer.pdf':        { title: 'Deenfest: Best Performer',    issuer: 'Deenfest' },
-  'deenfest participation.pdf':         { title: 'Deenfest: Participation',     issuer: 'Deenfest' },
-  'nascon_certificate.pdf':             { title: 'NASCON Certificate',          issuer: 'NASCON' },
-  'Participation_Google_Hackathon.pdf': { title: 'Google Hackathon: Participation', issuer: 'Google' }
+  'Game Development.pdf': {
+    title: 'Unity Game Development Program',
+    issuer: 'Summer Program',
+    note: 'Team Project',
+    desc: 'A 3-month summer program on Unity fundamentals. Our team built an educational game that teaches shape recognition, and we created most of its assets ourselves.'
+  },
+  'Intro_to_Git.pdf': {
+    title: 'Introduction to Git',
+    issuer: 'DataCamp',
+    desc: 'A DataCamp course on using Git in professional and corporate settings, covering how developers maintain and manage repositories.'
+  },
+  'Deenfest best performer.pdf': {
+    title: 'Deenfest: Best Performer',
+    issuer: 'Deenfest · University Event',
+    note: 'Creatives Lead · Higher Management',
+    desc: "Recognised as Best Performer at one of the university's biggest events celebrating Islam. I oversaw the Graphics, Media & Photography, and Décor teams, covering promotional material, event coverage and the decoration of key areas of campus."
+  },
+  'deenfest participation.pdf': {
+    title: 'Deenfest: Participation',
+    issuer: 'Deenfest · University Event',
+    note: 'Creatives Lead · Higher Management',
+    desc: 'Part of the higher management team for one of the biggest events on campus celebrating Islam. I led the teams that produced graphics and videos, filmed the event and decorated the university to welcome it.'
+  },
+  'nascon_certificate.pdf': {
+    title: 'NASCON',
+    issuer: 'NASCON',
+    note: 'Content Team Member',
+    desc: "Member of the content team, writing captions and hooks for posts, reels and videos, as well as speeches for the event's hosts."
+  },
+  'Participation_Google_Hackathon.pdf': {
+    title: 'Google Hackathon: Participation',
+    issuer: 'Google',
+    note: 'Participant',
+    desc: 'Our team built a prototype to improve vigilance and incident reporting during common emergencies such as floods.'
+  }
 };
 
-const LABELS = { skills: 'Skills & Extracurricular', hackathons: 'Hackathon' };
+const LABELS = { skills: 'Tech Skills', softskills: 'Soft Skills', hackathons: 'Hackathon' };
+
+if (window.pdfjsLib) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
 
 const esc = s => String(s).replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -877,9 +955,9 @@ function prettify(name) {
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
-function fileUrl(folder, name) {
-  return `https://github.com/${OWNER}/${REPO}/blob/${BRANCH}/${encodeURIComponent(folder)}/${encodeURIComponent(name)}`;
-}
+const enc = (folder, name) => encodeURIComponent(folder) + '/' + encodeURIComponent(name);
+const fileUrl = (folder, name) => `https://github.com/${OWNER}/${REPO}/blob/${BRANCH}/${enc(folder, name)}`;
+const rawUrl  = (folder, name) => `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${enc(folder, name)}`;
 
 async function listPdfs(key) {
   const folder = FOLDERS[key];
@@ -905,6 +983,25 @@ async function listPdfs(key) {
   }
 }
 
+// Draws page 1 of the PDF onto the canvas as the preview image
+async function renderPreview(canvas) {
+  const thumb = canvas.parentElement;
+  try {
+    if (!window.pdfjsLib) throw new Error('pdf.js not loaded');
+    const pdf  = await pdfjsLib.getDocument(canvas.dataset.src).promise;
+    const page = await pdf.getPage(1);
+    const base = page.getViewport({ scale: 1 });
+    const vp   = page.getViewport({ scale: 900 / base.width });
+    canvas.width  = vp.width;
+    canvas.height = vp.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    thumb.classList.add('ready');
+  } catch (err) {
+    console.warn('Preview failed for', canvas.dataset.src, err);
+    thumb.classList.add('failed');
+  }
+}
+
 async function renderCerts() {
   for (const key of Object.keys(FOLDERS)) {
     const grid = document.getElementById('grid-' + key);
@@ -919,15 +1016,35 @@ async function renderCerts() {
     grid.innerHTML = names.map(name => {
       const d = DETAILS[name] || {};
       return `
-        <div class="cert-card">
-          <div class="cert-issuer">${esc(d.issuer || LABELS[key])}</div>
-          <div class="cert-title">${esc(d.title || prettify(name))}</div>
-          <a class="cert-link" href="${fileUrl(FOLDERS[key], name)}" target="_blank" rel="noopener">View certificate →</a>
-        </div>`;
+        <a class="cert-card" href="${fileUrl(FOLDERS[key], name)}" target="_blank" rel="noopener"
+           aria-label="${esc(d.title || prettify(name))}">
+          <div class="cert-thumb"><canvas data-src="${rawUrl(FOLDERS[key], name)}"></canvas></div>
+          <div class="cert-overlay">
+            <div class="cert-issuer">${esc(d.issuer || LABELS[key])}</div>
+            <div class="cert-title">${esc(d.title || prettify(name))}</div>
+            ${d.note ? `<div class="cert-note">${esc(d.note)}</div>` : ''}
+            ${d.desc ? `<div class="cert-desc">${esc(d.desc)}</div>` : ''}
+            <div class="cert-link">View certificate →</div>
+          </div>
+        </a>`;
     }).join('');
+
+    grid.querySelectorAll('canvas').forEach(renderPreview);
   }
 }
 renderCerts();
+
+// Touch devices have no hover: first tap shows the details, second tap opens the PDF
+const noHover = window.matchMedia('(hover: none)');
+document.addEventListener('click', e => {
+  const card = e.target.closest('.cert-card');
+  document.querySelectorAll('.cert-card.open').forEach(c => { if (c !== card) c.classList.remove('open'); });
+  if (!card || !noHover.matches) return;
+  if (!card.classList.contains('open')) {
+    e.preventDefault();
+    card.classList.add('open');
+  }
+});
 
 document.querySelectorAll('.cert-tab').forEach(tab => {
   tab.addEventListener('click', () => {
