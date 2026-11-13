@@ -382,6 +382,37 @@
     height: fit-content;
   }
 
+  /* ── CERTIFICATIONS ── */
+  .cert-tabs { display: flex; gap: 0.75rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  .cert-tab {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.85rem; font-weight: 600;
+    padding: 0.6rem 1.4rem; border-radius: 99px;
+    background: transparent; color: var(--muted);
+    border: 1.5px solid var(--border); cursor: pointer;
+    transition: all 0.2s;
+  }
+  .cert-tab:hover { color: var(--white); border-color: rgba(168,85,247,0.5); }
+  .cert-tab.active { background: var(--grad); color: #fff; border-color: transparent; }
+  .cert-panel { display: none; }
+  .cert-panel.active { display: block; animation: fadeUp 0.5s ease both; }
+  .cert-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; }
+  .cert-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 1.5rem;
+    display: flex; flex-direction: column; gap: 0.4rem;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .cert-card:hover { border-color: rgba(168,85,247,0.4); transform: translateY(-3px); }
+  .cert-issuer { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--pink-l); }
+  .cert-title { font-size: 1.02rem; font-weight: 600; line-height: 1.3; }
+  .cert-note { font-size: 0.82rem; color: var(--azure-l); }
+  .cert-date { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--muted); }
+  .cert-link { margin-top: 0.75rem; font-size: 0.82rem; color: var(--purple-l); text-decoration: none; font-weight: 500; }
+  .cert-link:hover { color: var(--azure); }
+  .cert-more { margin-top: 2rem; font-size: 0.85rem; color: var(--muted); }
+  .cert-more a { color: var(--purple-l); text-decoration: none; }
+
   /* ── FOOTER ── */
   footer {
     border-top: 1px solid var(--border);
@@ -434,6 +465,7 @@
     <li><a href="#skills">Skills</a></li>
     <li><a href="#projects">Projects</a></li>
     <li><a href="#experience">Experience</a></li>
+    <li><a href="#certifications">Certifications</a></li>
     <li><a href="#education">Education</a></li>
   </ul>
 </nav>
@@ -719,6 +751,24 @@
   </div>
 </section>
 
+<!-- CERTIFICATIONS -->
+<section id="certifications">
+  <p class="section-label reveal">// certifications</p>
+  <h2 class="section-title reveal">Proof of <span class="grad-text">Learning</span></h2>
+
+  <div class="cert-tabs reveal">
+    <button class="cert-tab active" data-tab="skills">Skills & Extracurricular</button>
+    <button class="cert-tab" data-tab="hackathons">Hackathons</button>
+  </div>
+
+  <div class="cert-panel active" id="panel-skills"><div class="cert-grid" id="grid-skills"></div></div>
+  <div class="cert-panel" id="panel-hackathons"><div class="cert-grid" id="grid-hackathons"></div></div>
+
+  <p class="cert-more">All certificates are archived in
+    <a href="https://github.com/sincera315/Certifications" target="_blank">github.com/sincera315/Certifications</a>.
+  </p>
+</section>
+
 <!-- EDUCATION -->
 <section id="education">
   <p class="section-label reveal">// education</p>
@@ -785,6 +835,107 @@ const obs = new IntersectionObserver((entries) => {
   entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
 }, { threshold: 0.12 });
 revealEls.forEach(el => obs.observe(el));
+</script>
+
+<script>
+// ── Certifications: reads the PDFs straight from your GitHub repo folders
+const OWNER  = 'sincera315';
+const REPO   = 'Certifications';
+const BRANCH = 'main';
+
+// panel key -> exact folder name in your repo
+const FOLDERS = {
+  skills: 'Skills and Extracurricular',
+  hackathons: 'Hackathons'
+};
+
+// Used only if GitHub's API is unavailable (e.g. rate limit)
+const FALLBACK = {
+  skills: ['Game Development.pdf', 'Intro_to_Git.pdf', 'Deenfest best performer.pdf',
+           'deenfest participation.pdf', 'nascon_certificate.pdf'],
+  hackathons: ['Participation_Google_Hackathon.pdf']
+};
+
+// Optional: nicer titles/issuers. Key = exact filename. Anything not listed
+// gets an automatic title made from its filename.
+const DETAILS = {
+  'Game Development.pdf':               { title: 'Game Development',            issuer: '' },
+  'Intro_to_Git.pdf':                   { title: 'Introduction to Git',         issuer: '' },
+  'Deenfest best performer.pdf':        { title: 'Deenfest: Best Performer',    issuer: 'Deenfest' },
+  'deenfest participation.pdf':         { title: 'Deenfest: Participation',     issuer: 'Deenfest' },
+  'nascon_certificate.pdf':             { title: 'NASCON Certificate',          issuer: 'NASCON' },
+  'Participation_Google_Hackathon.pdf': { title: 'Google Hackathon: Participation', issuer: 'Google' }
+};
+
+const LABELS = { skills: 'Skills & Extracurricular', hackathons: 'Hackathon' };
+
+const esc = s => String(s).replace(/[&<>"']/g, c =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function prettify(name) {
+  const t = name.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').trim();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+function fileUrl(folder, name) {
+  return `https://github.com/${OWNER}/${REPO}/blob/${BRANCH}/${encodeURIComponent(folder)}/${encodeURIComponent(name)}`;
+}
+
+async function listPdfs(key) {
+  const folder = FOLDERS[key];
+  const cacheKey = 'certs-' + key;
+  try {
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) return JSON.parse(cached);
+  } catch (e) {}
+
+  try {
+    const api = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${encodeURIComponent(folder)}?ref=${BRANCH}`;
+    const res = await fetch(api);
+    if (!res.ok) throw new Error('GitHub API ' + res.status);
+    const data = await res.json();
+    const names = data
+      .filter(f => f.type === 'file' && /\.pdf$/i.test(f.name))
+      .map(f => f.name);
+    try { sessionStorage.setItem(cacheKey, JSON.stringify(names)); } catch (e) {}
+    return names;
+  } catch (err) {
+    console.warn('Using fallback list for', key, err);
+    return FALLBACK[key];
+  }
+}
+
+async function renderCerts() {
+  for (const key of Object.keys(FOLDERS)) {
+    const grid = document.getElementById('grid-' + key);
+    grid.innerHTML = '<p class="cert-more">Loading certificates…</p>';
+    const names = await listPdfs(key);
+
+    if (!names.length) {
+      grid.innerHTML = '<p class="cert-more">No certificates yet.</p>';
+      continue;
+    }
+
+    grid.innerHTML = names.map(name => {
+      const d = DETAILS[name] || {};
+      return `
+        <div class="cert-card">
+          <div class="cert-issuer">${esc(d.issuer || LABELS[key])}</div>
+          <div class="cert-title">${esc(d.title || prettify(name))}</div>
+          <a class="cert-link" href="${fileUrl(FOLDERS[key], name)}" target="_blank" rel="noopener">View certificate →</a>
+        </div>`;
+    }).join('');
+  }
+}
+renderCerts();
+
+document.querySelectorAll('.cert-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.cert-tab, .cert-panel').forEach(el => el.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+  });
+});
 </script>
 </body>
 </html>
